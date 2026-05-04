@@ -7,7 +7,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 20px; }
-    .kart { background: white; border-radius: 12px; padding: 20px; max-width: 600px; margin: 0 auto 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .kart { background: white; border-radius: 12px; padding: 20px; max-width: 640px; margin: 0 auto 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     h1 { font-size: 20px; margin-bottom: 4px; }
     .alti-yazi { color: #666; font-size: 13px; margin-bottom: 16px; }
     .yukle-alan { border: 2px dashed #ddd; border-radius: 10px; padding: 30px; text-align: center; cursor: pointer; display: block; }
@@ -48,7 +48,6 @@
     const tumFisler = [];
 
     document.getElementById('fileInput').addEventListener('change', function() {
-      console.log('Dosya seçildi:', this.files.length);
       isleFile(this.files);
     });
 
@@ -56,16 +55,12 @@
       const durum = document.getElementById('durum');
       durum.style.display = 'block';
       for (const file of Array.from(files)) {
-        console.log('İşleniyor:', file.name);
         durum.textContent = '⏳ ' + file.name + ' okunuyor...';
         try {
           const fd = new FormData();
           fd.append('fis', file);
-          console.log('İstek gönderiliyor...');
           const resp = await fetch('/api/oku-fis', { method: 'POST', body: fd });
-          console.log('Yanıt geldi:', resp.status);
           const json = await resp.json();
-          console.log('JSON:', json);
           if (json.ok) {
             json.data._thumb = URL.createObjectURL(file);
             tumFisler.push(json.data);
@@ -73,12 +68,16 @@
             alert('Hata: ' + json.hata);
           }
         } catch(e) {
-          console.error('Fetch hatası:', e);
           alert('Bağlantı hatası: ' + e.message);
         }
       }
       durum.style.display = 'none';
       render();
+    }
+
+    function para(sayi) {
+      if (sayi == null || isNaN(sayi)) return '0,00';
+      return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function render() {
@@ -89,21 +88,21 @@
             <img src="${r._thumb}" style="width:50px;height:50px;object-fit:cover;border-radius:6px">
             <div>
               <p style="font-weight:500">${r.tedarikci || '—'}</p>
-              <p style="font-size:12px;color:#666">${r.tarih} · ${r.odeme_turu}</p>
+              <p style="font-size:12px;color:#666">${r.tarih}${r.fis_no ? ' · Fiş No: ' + r.fis_no : ''} · ${r.odeme_turu}${r.kart_son4 ? ' *' + r.kart_son4 : ''}</p>
               <p style="font-size:12px;color:#666">${r.aciklama}</p>
             </div>
           </div>
           <div style="margin-top:12px">
             ${(r.kdv_satirlari||[]).map(k=>`
               <div class="kdv-satir">
-                <span>KDV %${k.oran} — Matrah ₺${k.matrah.toFixed(2)}</span>
-                <span class="kdv-tutar">₺${k.kdv_tutari.toFixed(2)}</span>
+                <span>KDV %${k.oran} — Matrah ₺${para(k.matrah)} | KDV ₺${para(k.kdv_tutari)}</span>
+                <span class="kdv-tutar">₺${para(k.kdvli_toplam)}</span>
               </div>`).join('')}
           </div>
           <div class="ozet-grid">
-            <div class="ozet-kutu"><p class="ozet-etiket">Matrah</p><p class="ozet-deger">₺${(r.toplam_matrah||0).toFixed(2)}</p></div>
-            <div class="ozet-kutu"><p class="ozet-etiket">KDV</p><p class="ozet-deger" style="color:#0F6E56">₺${(r.toplam_kdv||0).toFixed(2)}</p></div>
-            <div class="ozet-kutu"><p class="ozet-etiket">Toplam</p><p class="ozet-deger">₺${(r.genel_toplam||0).toFixed(2)}</p></div>
+            <div class="ozet-kutu"><p class="ozet-etiket">Matrah</p><p class="ozet-deger">₺${para(r.toplam_matrah)}</p></div>
+            <div class="ozet-kutu"><p class="ozet-etiket">KDV</p><p class="ozet-deger" style="color:#0F6E56">₺${para(r.toplam_kdv)}</p></div>
+            <div class="ozet-kutu"><p class="ozet-etiket">Genel Toplam</p><p class="ozet-deger">₺${para(r.genel_toplam)}</p></div>
           </div>
         </div>`).join('');
       document.getElementById('exportKart').style.display = tumFisler.length ? 'block' : 'none';
@@ -112,34 +111,70 @@
     function getRows() {
       const rows = [];
       tumFisler.forEach(r => {
-        (r.kdv_satirlari||[{oran:'',matrah:r.toplam_matrah,kdv_tutari:r.toplam_kdv}]).forEach(k => {
-          rows.push([r.tarih,r.tedarikci,r.aciklama,k.matrah,k.oran,k.kdv_tutari,k.matrah+k.kdv_tutari,r.odeme_turu]);
+        const satirlar = r.kdv_satirlari && r.kdv_satirlari.length ? r.kdv_satirlari : [{oran:'', kdvli_toplam: r.genel_toplam, kdv_tutari: r.toplam_kdv, matrah: r.toplam_matrah}];
+        satirlar.forEach(k => {
+          rows.push({
+            tarih: r.tarih,
+            fis_no: r.fis_no || '',
+            tedarikci: r.tedarikci,
+            aciklama: r.aciklama,
+            kdv_orani: k.oran,
+            matrah: k.matrah,
+            kdv_tutari: k.kdv_tutari,
+            kdvli_toplam: k.kdvli_toplam,
+            odeme: r.odeme_turu,
+            kart_son4: r.kart_son4 || '',
+            _dip: false
+          });
+        });
+        rows.push({
+          tarih: '', fis_no: '', tedarikci: r.tedarikci + ' TOPLAM', aciklama: '',
+          kdv_orani: '', matrah: r.toplam_matrah, kdv_tutari: r.toplam_kdv,
+          kdvli_toplam: r.genel_toplam, odeme: '', kart_son4: '', _dip: true
         });
       });
       return rows;
     }
 
+    function virgul(sayi) {
+      if (sayi === '' || sayi == null) return '';
+      return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
     function csvIndir() {
-      const h = ['Tarih','Tedarikçi','Açıklama','Matrah','KDV %','KDV Tutarı','Satır Toplamı','Ödeme'];
-      const csv = [h.join(';'), ...getRows().map(r=>r.join(';'))].join('\n');
-      dl('\uFEFF'+csv,'fisler.csv','text/csv');
+      const rows = getRows();
+      if (!rows.length) { alert('Henüz işlenmiş fiş yok.'); return; }
+      const h = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
+      const lines = [h.join(';')];
+      rows.forEach(r => {
+        lines.push([
+          r.tarih, r.fis_no, r.tedarikci, r.aciklama,
+          r.kdv_orani, virgul(r.matrah), virgul(r.kdv_tutari), virgul(r.kdvli_toplam),
+          r.odeme, r.kart_son4
+        ].join(';'));
+      });
+      dl('\uFEFF' + lines.join('\n'), 'fisler.csv', 'text/csv');
     }
 
     function excelIndir() {
-      const h = ['Tarih','Tedarikçi','Açıklama','Matrah','KDV %','KDV Tutarı','Satır Toplamı','Ödeme'];
-      let xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Fişler"><Table>`;
-      xml += '<Row>'+h.map(h=>`<Cell><Data ss:Type="String">${h}</Data></Cell>`).join('')+'</Row>';
-      getRows().forEach(r => {
-        xml += '<Row>'+r.map((v,i)=>`<Cell><Data ss:Type="${i>2?'Number':'String'}">${v}</Data></Cell>`).join('')+'</Row>';
+      const rows = getRows();
+      if (!rows.length) { alert('Henüz işlenmiş fiş yok.'); return; }
+      const h = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
+      const lines = [h.join('\t')];
+      rows.forEach(r => {
+        lines.push([
+          r.tarih, r.fis_no, r.tedarikci, r.aciklama,
+          r.kdv_orani, virgul(r.matrah), virgul(r.kdv_tutari), virgul(r.kdvli_toplam),
+          r.odeme, r.kart_son4
+        ].join('\t'));
       });
-      xml += '</Table></Worksheet></Workbook>';
-      dl(xml,'fisler.xls','application/vnd.ms-excel');
+      dl('\uFEFF' + lines.join('\n'), 'fisler.xls', 'application/vnd.ms-excel');
     }
 
-    function dl(content,name,mime){
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([content],{type:mime}));
-      a.download=name;
+    function dl(content, name, mime) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+      a.download = name;
       a.click();
     }
   </script>
