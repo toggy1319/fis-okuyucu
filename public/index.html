@@ -20,6 +20,8 @@
     .ozet-kutu { background: #f5f5f5; border-radius: 8px; padding: 10px; }
     .ozet-etiket { font-size: 11px; color: #888; }
     .ozet-deger { font-size: 15px; font-weight: 500; }
+    .ozel-kutu { background: #fff8e1; border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 12px; }
+    .ozel-baslik { font-weight: 500; font-size: 12px; color: #b45309; margin-bottom: 4px; }
     #durum { text-align: center; padding: 12px; color: #666; font-size: 14px; display: none; }
     #fileInput { display: none; }
   </style>
@@ -82,7 +84,11 @@
 
     function render() {
       const el = document.getElementById('fisler');
-      el.innerHTML = tumFisler.map((r) => `
+      el.innerHTML = tumFisler.map((r) => {
+        const oz = r.ozel_urunler || {};
+        const alkolVar = oz.alkol_tutari > 0;
+        const sigaraVar = oz.sigara_tutari > 0;
+        return `
         <div class="kart">
           <div style="display:flex;gap:12px;align-items:flex-start">
             <img src="${r._thumb}" style="width:50px;height:50px;object-fit:cover;border-radius:6px">
@@ -99,38 +105,40 @@
                 <span class="kdv-tutar">₺${para(k.kdvli_toplam)}</span>
               </div>`).join('')}
           </div>
+          ${alkolVar ? `<div class="ozel-kutu"><p class="ozel-baslik">🍺 Alkol: ₺${para(oz.alkol_tutari)}</p><p style="color:#666">${oz.alkol_urunler}</p></div>` : ''}
+          ${sigaraVar ? `<div class="ozel-kutu"><p class="ozel-baslik">🚬 Sigara: ₺${para(oz.sigara_tutari)}</p><p style="color:#666">${oz.sigara_urunler}</p></div>` : ''}
           <div class="ozet-grid">
             <div class="ozet-kutu"><p class="ozet-etiket">Matrah</p><p class="ozet-deger">₺${para(r.toplam_matrah)}</p></div>
             <div class="ozet-kutu"><p class="ozet-etiket">KDV</p><p class="ozet-deger" style="color:#0F6E56">₺${para(r.toplam_kdv)}</p></div>
             <div class="ozet-kutu"><p class="ozet-etiket">Genel Toplam</p><p class="ozet-deger">₺${para(r.genel_toplam)}</p></div>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       document.getElementById('exportKart').style.display = tumFisler.length ? 'block' : 'none';
     }
 
     function getRows() {
       const rows = [];
       tumFisler.forEach(r => {
+        const oz = r.ozel_urunler || {};
         const satirlar = r.kdv_satirlari && r.kdv_satirlari.length ? r.kdv_satirlari : [{oran:'', kdvli_toplam: r.genel_toplam, kdv_tutari: r.toplam_kdv, matrah: r.toplam_matrah}];
         satirlar.forEach(k => {
           rows.push({
-            tarih: r.tarih,
-            fis_no: r.fis_no || '',
-            tedarikci: r.tedarikci,
-            aciklama: r.aciklama,
-            kdv_orani: k.oran,
-            matrah: k.matrah,
-            kdv_tutari: k.kdv_tutari,
-            kdvli_toplam: k.kdvli_toplam,
-            odeme: r.odeme_turu,
-            kart_son4: r.kart_son4 || '',
+            tarih: r.tarih, fis_no: r.fis_no || '', tedarikci: r.tedarikci,
+            aciklama: r.aciklama, kdv_orani: k.oran,
+            matrah: k.matrah, kdv_tutari: k.kdv_tutari, kdvli_toplam: k.kdvli_toplam,
+            odeme: r.odeme_turu, kart_son4: r.kart_son4 || '',
+            alkol_tutari: '', alkol_urunler: '', sigara_tutari: '', sigara_urunler: '',
             _dip: false
           });
         });
         rows.push({
-          tarih: '', fis_no: '', tedarikci: r.tedarikci + ' TOPLAM', aciklama: '',
+          tarih: '', fis_no: '', tedarikci: r.tedarikci + ' — TOPLAM', aciklama: '',
           kdv_orani: '', matrah: r.toplam_matrah, kdv_tutari: r.toplam_kdv,
-          kdvli_toplam: r.genel_toplam, odeme: '', kart_son4: '', _dip: true
+          kdvli_toplam: r.genel_toplam, odeme: '', kart_son4: '',
+          alkol_tutari: oz.alkol_tutari || 0, alkol_urunler: oz.alkol_urunler || '',
+          sigara_tutari: oz.sigara_tutari || 0, sigara_urunler: oz.sigara_urunler || '',
+          _dip: true
         });
       });
       return rows;
@@ -141,33 +149,31 @@
       return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    function satirDizi(r) {
+      return [
+        r.tarih, r.fis_no, r.tedarikci, r.aciklama,
+        r.kdv_orani, virgul(r.matrah), virgul(r.kdv_tutari), virgul(r.kdvli_toplam),
+        r.odeme, r.kart_son4,
+        r._dip ? virgul(r.alkol_tutari) : '',
+        r._dip ? r.alkol_urunler : '',
+        r._dip ? virgul(r.sigara_tutari) : '',
+        r._dip ? r.sigara_urunler : ''
+      ];
+    }
+
+    const basliklar = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4','Alkol Tutarı','Alkol Ürünleri','Sigara Tutarı','Sigara Ürünleri'];
+
     function csvIndir() {
       const rows = getRows();
       if (!rows.length) { alert('Henüz işlenmiş fiş yok.'); return; }
-      const h = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
-      const lines = [h.join(';')];
-      rows.forEach(r => {
-        lines.push([
-          r.tarih, r.fis_no, r.tedarikci, r.aciklama,
-          r.kdv_orani, virgul(r.matrah), virgul(r.kdv_tutari), virgul(r.kdvli_toplam),
-          r.odeme, r.kart_son4
-        ].join(';'));
-      });
+      const lines = [basliklar.join(';'), ...rows.map(r => satirDizi(r).join(';'))];
       dl('\uFEFF' + lines.join('\n'), 'fisler.csv', 'text/csv');
     }
 
     function excelIndir() {
       const rows = getRows();
       if (!rows.length) { alert('Henüz işlenmiş fiş yok.'); return; }
-      const h = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
-      const lines = [h.join('\t')];
-      rows.forEach(r => {
-        lines.push([
-          r.tarih, r.fis_no, r.tedarikci, r.aciklama,
-          r.kdv_orani, virgul(r.matrah), virgul(r.kdv_tutari), virgul(r.kdvli_toplam),
-          r.odeme, r.kart_son4
-        ].join('\t'));
-      });
+      const lines = [basliklar.join('\t'), ...rows.map(r => satirDizi(r).join('\t'))];
       dl('\uFEFF' + lines.join('\n'), 'fisler.xls', 'application/vnd.ms-excel');
     }
 
