@@ -28,8 +28,8 @@ async function fisCoz(b64, mime) {
   "fis_no": "fiş numarası veya fatura no, yoksa boş string",
   "tedarikci": "firma adı",
   "aciklama": "kısa özet",
-  "odeme_turu": "Nakit veya Kredi Kartı",
-  "kart_son4": "kredi kartı son 4 hanesi, nakit ise boş string",
+  "odeme_turu": "Nakit veya Kredi Karti",
+  "kart_son4": "kredi karti son 4 hanesi, nakit ise bos string",
   "kdv_satirlari": [
     {
       "oran": 18,
@@ -43,12 +43,12 @@ async function fisCoz(b64, mime) {
   "genel_toplam": 118.00
 }
 
-Önemli:
-- kdvli_toplam: fişte yazan KDV dahil fiyat
-- kdv_tutari: sadece KDV miktarı
+Onemli:
+- kdvli_toplam: fiste yazan KDV dahil fiyat
+- kdv_tutari: sadece KDV miktari
 - matrah: kdvli_toplam - kdv_tutari
-- Birden fazla KDV oranı varsa hepsini ayrı yaz
-- kart_son4: fişte "****1234" gibi yazıyorsa "1234" yaz`;
+- Birden fazla KDV orani varsa hepsini ayri yaz
+- kart_son4: fiste "****1234" gibi yaziyorsa "1234" yaz`;
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -71,7 +71,7 @@ async function fisCoz(b64, mime) {
   });
 
   const data = await resp.json();
-  console.log('API yanıtı:', JSON.stringify(data).substring(0, 200));
+  console.log('API yaniti:', JSON.stringify(data).substring(0, 200));
   
   const text = data.content[0].text;
   const clean = text.replace(/```json|```/g, '').trim();
@@ -80,19 +80,19 @@ async function fisCoz(b64, mime) {
   return parsed;
 }
 
+function para(sayi) {
+  if (sayi == null || isNaN(sayi)) return '0,00';
+  return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 if (process.env.TELEGRAM_TOKEN) {
   const TelegramBot = require('node-telegram-bot-api');
   const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
   const userFisler = {};
 
-  function para(sayi) {
-    if (sayi == null || isNaN(sayi)) return '0,00';
-    return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-
   bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
-    await bot.sendMessage(chatId, '📄 Fiş okunuyor...');
+    await bot.sendMessage(chatId, 'Fis okunuyor...');
     try {
       const photo = msg.photo[msg.photo.length - 1];
       const fileInfo = await bot.getFile(photo.file_id);
@@ -107,21 +107,21 @@ if (process.env.TELEGRAM_TOKEN) {
       userFisler[chatId].push(r);
 
       const kdvSatir = r.kdv_satirlari.map(k =>
-        `  %${k.oran} → Matrah: ₺${para(k.matrah)} | KDV: ₺${para(k.kdv_tutari)} | Toplam: ₺${para(k.kdvli_toplam)}`
+        `%${k.oran} - Matrah: ${para(k.matrah)} | KDV: ${para(k.kdv_tutari)} | Toplam: ${para(k.kdvli_toplam)}`
       ).join('\n');
 
-      await bot.sendMessage(chatId,
-        `✅ *${r.tedarikci}* — ${r.tarih}${r.fis_no ? ' (Fiş: ' + r.fis_no + ')' : ''}\n` +
-        `📝 ${r.aciklama}\n` +
-        `💳 ${r.odeme_turu}${r.kart_son4 ? ' *' + r.kart_son4 : ''}\n\n` +
-        `*KDV Detayı:*\n${kdvSatir}\n\n` +
-        `Matrah: ₺${para(r.toplam_matrah)} | KDV: ₺${para(r.toplam_kdv)} | *Toplam: ₺${para(r.genel_toplam)}*\n\n` +
-        `Toplam ${userFisler[chatId].length} fiş birikti. CSV almak için /csv yaz.`,
-        { parse_mode: 'Markdown' }
-      );
+      const mesaj = 
+        `${r.tedarikci} - ${r.tarih}${r.fis_no ? ' (Fis: ' + r.fis_no + ')' : ''}\n` +
+        `${r.aciklama}\n` +
+        `${r.odeme_turu}${r.kart_son4 ? ' *' + r.kart_son4 : ''}\n\n` +
+        `KDV Detayi:\n${kdvSatir}\n\n` +
+        `Matrah: ${para(r.toplam_matrah)} | KDV: ${para(r.toplam_kdv)} | Toplam: ${para(r.genel_toplam)}\n\n` +
+        `Toplam ${userFisler[chatId].length} fis birikti. CSV almak icin /csv yaz.`;
+
+      await bot.sendMessage(chatId, mesaj);
     } catch(e) {
       console.error('Telegram hata:', e.message);
-      await bot.sendMessage(chatId, '❌ Fiş okunamadı, tekrar dene.');
+      await bot.sendMessage(chatId, 'Fis okunamadi, tekrar dene.');
     }
   });
 
@@ -129,10 +129,10 @@ if (process.env.TELEGRAM_TOKEN) {
     const chatId = msg.chat.id;
     const fisler = userFisler[chatId];
     if (!fisler || fisler.length === 0) {
-      await bot.sendMessage(chatId, '📭 Henüz fiş yok. Önce fiş fotoğrafı gönder.');
+      await bot.sendMessage(chatId, 'Henuz fis yok. Once fis fotografı gonder.');
       return;
     }
-    const baslik = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
+    const baslik = ['Tarih','Fis No','Tedarikci','Aciklama','KDV %','Matrah','KDV Tutari','KDVli Toplam','Odeme','Kart Son 4'];
     const satirlar = [baslik.join(';')];
     fisler.forEach(r => {
       const kdvler = r.kdv_satirlari && r.kdv_satirlari.length ? r.kdv_satirlari : [{oran:'', kdvli_toplam: r.genel_toplam, kdv_tutari: r.toplam_kdv, matrah: r.toplam_matrah}];
@@ -145,20 +145,21 @@ if (process.env.TELEGRAM_TOKEN) {
     const buf = Buffer.from(csv, 'utf8');
     await bot.sendDocument(chatId, buf, {}, { filename: 'fisler.csv', contentType: 'text/csv' });
     userFisler[chatId] = [];
-    await bot.sendMessage(chatId, '✅ CSV gönderildi, liste sıfırlandı.');
+    await bot.sendMessage(chatId, 'CSV gonderildi, liste sifirlandı.');
   });
 
   bot.onText(/\/temizle/, async (msg) => {
     userFisler[msg.chat.id] = [];
-    await bot.sendMessage(msg.chat.id, '🗑 Liste temizlendi.');
+    await bot.sendMessage(msg.chat.id, 'Liste temizlendi.');
   });
 
   bot.onText(/\/durum/, async (msg) => {
     const chatId = msg.chat.id;
     const sayi = (userFisler[chatId] || []).length;
-    await bot.sendMessage(chatId, `📊 Şu an ${sayi} fiş birikmiş.`);
+    await bot.sendMessage(chatId, `Su an ${sayi} fis birikmus.`);
   });
 
   console.log('Telegram botu aktif');
 }
-app.listen(process.env.PORT || 3000, () => console.log('Sunucu çalışıyor'));
+
+app.listen(process.env.PORT || 3000, () => console.log('Sunucu calisiyor'));
