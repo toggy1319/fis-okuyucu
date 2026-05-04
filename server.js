@@ -80,4 +80,85 @@ async function fisCoz(b64, mime) {
   return parsed;
 }
 
+if (process.env.TELEGRAM_TOKEN) {
+  const TelegramBot = require('node-telegram-bot-api');
+  const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, { polling: true });
+  const userFisler = {};
+
+  function para(sayi) {
+    if (sayi == null || isNaN(sayi)) return '0,00';
+    return Number(sayi).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  bot.on('photo', async (msg) => {
+    const chatId = msg.chat.id;
+    await bot.sendMessage(chatId, '📄 Fiş okunuyor...');
+    try {
+      const photo = msg.photo[msg.photo.length - 1];
+      const fileInfo = await bot.getFile(photo.file_id);
+      const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
+      const url = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+      const imgResp = await fetch(url);
+      const buffer = await imgResp.buffer();
+      const b64 = buffer.toString('base64');
+      const r = await fisCoz(b64, 'image/jpeg');
+
+      if (!userFisler[chatId]) userFisler[chatId] = [];
+      userFisler[chatId].push(r);
+
+      const kdvSatir = r.kdv_satirlari.map(k =>
+        `  %${k.oran} → Matrah: ₺${para(k.matrah)} | KDV: ₺${para(k.kdv_tutari)} | Toplam: ₺${para(k.kdvli_toplam)}`
+      ).join('\n');
+
+      await bot.sendMessage(chatId,
+        `✅ *${r.tedarikci}* — ${r.tarih}${r.fis_no ? ' (Fiş: ' + r.fis_no + ')' : ''}\n` +
+        `📝 ${r.aciklama}\n` +
+        `💳 ${r.odeme_turu}${r.kart_son4 ? ' *' + r.kart_son4 : ''}\n\n` +
+        `*KDV Detayı:*\n${kdvSatir}\n\n` +
+        `Matrah: ₺${para(r.toplam_matrah)} | KDV: ₺${para(r.toplam_kdv)} | *Toplam: ₺${para(r.genel_toplam)}*\n\n` +
+        `Toplam ${userFisler[chatId].length} fiş birikti. CSV almak için /csv yaz.`,
+        { parse_mode: 'Markdown' }
+      );
+    } catch(e) {
+      console.error('Telegram hata:', e.message);
+      await bot.sendMessage(chatId, '❌ Fiş okunamadı, tekrar dene.');
+    }
+  });
+
+  bot.onText(/\/csv/, async (msg) => {
+    const chatId = msg.chat.id;
+    const fisler = userFisler[chatId];
+    if (!fisler || fisler.length === 0) {
+      await bot.sendMessage(chatId, '📭 Henüz fiş yok. Önce fiş fotoğrafı gönder.');
+      return;
+    }
+    const baslik = ['Tarih','Fiş No','Tedarikçi','Açıklama','KDV %','Matrah','KDV Tutarı','KDV\'li Toplam','Ödeme','Kart Son 4'];
+    const satirlar = [baslik.join(';')];
+    fisler.forEach(r => {
+      const kdvler = r.kdv_satirlari && r.kdv_satirlari.length ? r.kdv_satirlari : [{oran:'', kdvli_toplam: r.genel_toplam, kdv_tutari: r.toplam_kdv, matrah: r.toplam_matrah}];
+      kdvler.forEach(k => {
+        satirlar.push([r.tarih, r.fis_no||'', r.tedarikci, r.aciklama, k.oran, para(k.matrah), para(k.kdv_tutari), para(k.kdvli_toplam), r.odeme_turu, r.kart_son4||''].join(';'));
+      });
+      satirlar.push(['', '', r.tedarikci + ' TOPLAM', '', '', para(r.toplam_matrah), para(r.toplam_kdv), para(r.genel_toplam), '', ''].join(';'));
+    });
+    const csv = '\uFEFF' + satirlar.join('\n');
+    const buf = Buffer.from(csv, 'utf8');
+    await bot.sendDocument(chatId, buf, {}, { filename: 'fisler.csv', contentType: 'text/csv' });
+    userFisler[chatId] = [];
+    await bot.sendMessage(chatId, '✅ CSV gönderildi, liste sıfırlandı.');
+  });
+
+  bot.onText(/\/temizle/, async (msg) => {
+    userFisler[msg.chat.id] = [];
+    await bot.sendMessage(msg.chat.id, '🗑 Liste temizlendi.');
+  });
+
+  bot.onText(/\/durum/, async (msg) => {
+    const chatId = msg.chat.id;
+    const sayi = (userFisler[chatId] || []).length;
+    await bot.sendMessage(chatId, `📊 Şu an ${sayi} fiş birikmiş.`);
+  });
+
+  console.log('Telegram botu aktif');
+}
 app.listen(process.env.PORT || 3000, () => console.log('Sunucu çalışıyor'));
