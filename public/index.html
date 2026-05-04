@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fiş Okuyucu</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; padding: 20px; }
+    .kart { background: white; border-radius: 12px; padding: 20px; max-width: 600px; margin: 0 auto 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .alti-yazi { color: #666; font-size: 13px; margin-bottom: 16px; }
+    .yukle-alan { border: 2px dashed #ddd; border-radius: 10px; padding: 30px; text-align: center; cursor: pointer; display: block; }
+    .yukle-alan:hover { border-color: #aaa; background: #fafafa; }
+    .btn { background: #000; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; margin-right: 8px; }
+    .btn-beyaz { background: white; color: #000; border: 1px solid #ddd; }
+    .kdv-satir { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .kdv-tutar { color: #0F6E56; font-weight: 500; }
+    .ozet-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .ozet-kutu { background: #f5f5f5; border-radius: 8px; padding: 10px; }
+    .ozet-etiket { font-size: 11px; color: #888; }
+    .ozet-deger { font-size: 15px; font-weight: 500; }
+    .spinner { display: none; text-align: center; padding: 16px; color: #666; }
+    #fileInput { display: none; }
+  </style>
+</head>
+<body>
+  <div class="kart">
+    <h1>🧾 Fiş Okuyucu</h1>
+    <p class="alti-yazi">Fotoğraf yükle, KDV otomatik ayrılsın</p>
+    <label class="yukle-alan" for="fileInput">
+      <div style="font-size:32px">📷</div>
+      <p style="margin-top:8px;font-weight:500">Fiş fotoğrafı seç</p>
+      <p style="font-size:12px;color:#999;margin-top:4px">JPG, PNG — birden fazla seçebilirsin</p>
+    </label>
+    <input type="file" id="fileInput" accept="image/*" multiple onchange="isleFile(this.files)">
+    <div class="spinner" id="spinner">⏳ Okunuyor...</div>
+  </div>
+
+  <div id="fisler"></div>
+
+  <div class="kart" id="exportKart" style="display:none">
+    <button class="btn btn-beyaz" onclick="csvIndir()">CSV indir</button>
+    <button class="btn" onclick="excelIndir()">Excel indir</button>
+  </div>
+
+  <script>
+    const tumFisler = [];
+
+    async function isleFile(files) {
+      document.getElementById('spinner').style.display = 'block';
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('fis', file);
+        const resp = await fetch('/api/oku-fis', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (json.ok) {
+          json.data._thumb = URL.createObjectURL(file);
+          tumFisler.push(json.data);
+        }
+      }
+      document.getElementById('spinner').style.display = 'none';
+      render();
+    }
+
+    function render() {
+      const el = document.getElementById('fisler');
+      el.innerHTML = tumFisler.map((r) => `
+        <div class="kart">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <img src="${r._thumb}" style="width:50px;height:50px;object-fit:cover;border-radius:6px">
+            <div>
+              <p style="font-weight:500">${r.tedarikci || '—'}</p>
+              <p style="font-size:12px;color:#666">${r.tarih} · ${r.odeme_turu}</p>
+              <p style="font-size:12px;color:#666">${r.aciklama}</p>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            ${(r.kdv_satirlari||[]).map(k=>`
+              <div class="kdv-satir">
+                <span>KDV %${k.oran} — Matrah ₺${k.matrah.toFixed(2)}</span>
+                <span class="kdv-tutar">₺${k.kdv_tutari.toFixed(2)}</span>
+              </div>`).join('')}
+          </div>
+          <div class="ozet-grid">
+            <div class="ozet-kutu"><p class="ozet-etiket">Matrah</p><p class="ozet-deger">₺${(r.toplam_matrah||0).toFixed(2)}</p></div>
+            <div class="ozet-kutu"><p class="ozet-etiket">KDV</p><p class="ozet-deger" style="color:#0F6E56">₺${(r.toplam_kdv||0).toFixed(2)}</p></div>
+            <div class="ozet-kutu"><p class="ozet-etiket">Toplam</p><p class="ozet-deger">₺${(r.genel_toplam||0).toFixed(2)}</p></div>
+          </div>
+        </div>`).join('');
+      document.getElementById('exportKart').style.display = tumFisler.length ? 'block' : 'none';
+    }
+
+    function getRows() {
+      const rows = [];
+      tumFisler.forEach(r => {
+        (r.kdv_satirlari||[{oran:'',matrah:r.toplam_matrah,kdv_tutari:r.toplam_kdv}]).forEach(k => {
+          rows.push([r.tarih,r.tedarikci,r.aciklama,k.matrah,k.oran,k.kdv_tutari,k.matrah+k.kdv_tutari,r.odeme_turu]);
+        });
+      });
+      return rows;
+    }
+
+    function csvIndir() {
+      const h = ['Tarih','Tedarikçi','Açıklama','Matrah','KDV %','KDV Tutarı','Satır Toplamı','Ödeme'];
+      const csv = [h.join(';'), ...getRows().map(r=>r.join(';'))].join('\n');
+      dl('\uFEFF'+csv,'fisler.csv','text/csv');
+    }
+
+    function excelIndir() {
+      const h = ['Tarih','Tedarikçi','Açıklama','Matrah','KDV %','KDV Tutarı','Satır Toplamı','Ödeme'];
+      let xml = `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Fişler"><Table>`;
+      xml += '<Row>'+h.map(h=>`<Cell><Data ss:Type="String">${h}</Data></Cell>`).join('')+'</Row>';
+      getRows().forEach(r => {
+        xml += '<Row>'+r.map((v,i)=>`<Cell><Data ss:Type="${i>2?'Number':'String'}">${v}</Data></Cell>`).join('')+'</Row>';
+      });
+      xml += '</Table></Worksheet></Workbook>';
+      dl(xml,'fisler.xls','application/vnd.ms-excel');
+    }
+
+    function dl(content,name,mime){
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+      a.download=name;
+      a.click();
+    }
+  </script>
+</body>
+</html>
