@@ -55,7 +55,9 @@ Birden fazla KDV oranı varsa hepsini ayrı yaz. Sadece JSON döndür.`;
 
   const data = await resp.json();
   const text = data.content.map(i => i.text || '').join('');
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+if (!parsed.kdv_satirlari) parsed.kdv_satirlari = [];
+return parsed;
 }
 
 if (process.env.TELEGRAM_TOKEN) {
