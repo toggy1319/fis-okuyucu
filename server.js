@@ -25,17 +25,11 @@ async function fisCoz(b64, mime) {
   const prompt = `Bu bir Türk kasa fişi veya faturasıdır. Sadece aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:
 {
   "tarih": "GG.AA.YYYY",
-  "fis_no": "fiş veya fatura numarası, yoksa boş string",
+  "fis_no": "fiş numarası veya fatura no, yoksa boş string",
   "tedarikci": "firma adı",
   "aciklama": "kısa özet",
   "odeme_turu": "Nakit veya Kredi Kartı",
   "kart_son4": "kredi kartı son 4 hanesi, nakit ise boş string",
-  "ozel_urunler": {
-    "alkol_tutari": 0.00,
-    "alkol_urunler": "varsa ürün adları virgülle, yoksa boş string",
-    "sigara_tutari": 0.00,
-    "sigara_urunler": "varsa ürün adları virgülle, yoksa boş string"
-  },
   "kdv_satirlari": [
     {
       "oran": 18,
@@ -49,15 +43,12 @@ async function fisCoz(b64, mime) {
   "genel_toplam": 118.00
 }
 
-Kurallar:
-- kdvli_toplam: KDV dahil fiyat
+Önemli:
+- kdvli_toplam: fişte yazan KDV dahil fiyat
 - kdv_tutari: sadece KDV miktarı
 - matrah: kdvli_toplam - kdv_tutari
 - Birden fazla KDV oranı varsa hepsini ayrı yaz
-- kart_son4: fişte "****1234" gibi yazıyorsa "1234" yaz
-- alkol_tutari: bira, şarap, rakı, viski, cin, votka gibi alkollü içeceklerin KDV dahil toplam tutarı
-- sigara_tutari: sigara, puro, elektronik sigara gibi ürünlerin KDV dahil toplam tutarı
-- Bu ürünler yoksa 0.00 yaz`;
+- kart_son4: fişte "****1234" gibi yazıyorsa "1234" yaz`;
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -86,7 +77,6 @@ Kurallar:
   const clean = text.replace(/```json|```/g, '').trim();
   const parsed = JSON.parse(clean);
   if (!parsed.kdv_satirlari) parsed.kdv_satirlari = [];
-  if (!parsed.ozel_urunler) parsed.ozel_urunler = { alkol_tutari: 0, alkol_urunler: '', sigara_tutari: 0, sigara_urunler: '' };
   return parsed;
 }
 
