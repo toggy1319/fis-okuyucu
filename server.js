@@ -23,7 +23,32 @@ async function fisCoz(b64, mime) {
   const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
   
   const prompt = `Bu bir Türk kasa fişi veya faturasıdır. Sadece aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:
-{"tarih":"GG.AA.YYYY","tedarikci":"firma adı","aciklama":"kısa özet","odeme_turu":"Nakit veya Kredi Kartı","kdv_satirlari":[{"oran":18,"matrah":100.00,"kdv_tutari":18.00}],"toplam_matrah":100.00,"toplam_kdv":18.00,"genel_toplam":118.00}`;
+{
+  "tarih": "GG.AA.YYYY",
+  "fis_no": "fiş numarası veya fatura no, yoksa boş string",
+  "tedarikci": "firma adı",
+  "aciklama": "kısa özet",
+  "odeme_turu": "Nakit veya Kredi Kartı",
+  "kart_son4": "kredi kartı son 4 hanesi, nakit ise boş string",
+  "kdv_satirlari": [
+    {
+      "oran": 18,
+      "kdvli_toplam": 118.00,
+      "kdv_tutari": 18.00,
+      "matrah": 100.00
+    }
+  ],
+  "toplam_matrah": 100.00,
+  "toplam_kdv": 18.00,
+  "genel_toplam": 118.00
+}
+
+Önemli:
+- kdvli_toplam: fişte yazan KDV dahil fiyat
+- kdv_tutari: sadece KDV miktarı
+- matrah: kdvli_toplam - kdv_tutari
+- Birden fazla KDV oranı varsa hepsini ayrı yaz
+- kart_son4: fişte "****1234" gibi yazıyorsa "1234" yaz`;
 
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -49,8 +74,6 @@ async function fisCoz(b64, mime) {
   console.log('API yanıtı:', JSON.stringify(data).substring(0, 200));
   
   const text = data.content[0].text;
-  console.log('Ham metin:', text.substring(0, 200));
-  
   const clean = text.replace(/```json|```/g, '').trim();
   const parsed = JSON.parse(clean);
   if (!parsed.kdv_satirlari) parsed.kdv_satirlari = [];
